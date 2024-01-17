@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 # Copyright © 2024 Federica Gamba <gamba@ufal.mff.cuni.cz>
+import argparse
 import pandas as pd
 from lxml import etree
 from collections import defaultdict
@@ -7,6 +8,22 @@ from flair.embeddings import TransformerWordEmbeddings, TransformerDocumentEmbed
 from flair.data import Sentence
 from sklearn.metrics.pairwise import cosine_similarity
 pd.set_option('display.max_columns', None)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("bert_model", type=str, help="BERT model to be used. Options: latin, mbert."
+                                                 "To use a different model, specify its HF name.")
+args = parser.parse_args()
+if args.bert_model == 'mbert':
+    bert = 'bert-base-multilingual-cased'
+elif args.bert_model == 'latin':
+    bert = '/home/federica/latin-bert/models/latin-bert'
+    # bert = 'model/latin-bert'
+else:
+    try:
+        bert = args.bert_model
+    except:  # improve exception handling
+        print('Please specify a valid BERT model.')
 
 
 # loading sentences (WN definitions)
@@ -51,7 +68,7 @@ def retrieve_definitions(filename, wn):
 
 def get_token_from_mlayer(m_filename, prefix='.//{http://ufal.mff.cuni.cz/pdt/pml/}'):
     """Function to retrieve all tokens from PDT morphological layer."""
-    filename = f'./../LDT_PML_tectogrammatical_130317/LDT_Sallust/Sallust_all_files/{m_filename}'
+    filename = f'/home/federica/vallex-pokus/LDT_PML_tectogrammatical_130317/LDT_Sallust/Sallust_all_files/{m_filename}'
     m_tree = etree.parse(filename)
     m_elem = m_tree.getroot()
     xml_m_tokens = m_elem.findall(f'{prefix}m')
@@ -68,7 +85,7 @@ def get_token_from_mlayer(m_filename, prefix='.//{http://ufal.mff.cuni.cz/pdt/pm
 
 def get_frames_from_tlayer(t_filename, pdt_tokens, prefix='.//{http://ufal.mff.cuni.cz/pdt/pml/}'):
     """Function to retrieve all nodes with a valency frame in PDT tectogrammatical layer."""
-    filename = f'./../LDT_PML_tectogrammatical_130317/LDT_Sallust/Sallust_all_files/{t_filename}'
+    filename = f'/home/federica/vallex-pokus/LDT_PML_tectogrammatical_130317/LDT_Sallust/Sallust_all_files/{t_filename}'
     t_tree = etree.parse(filename)
     t_elem = t_tree.getroot()
 
@@ -162,14 +179,15 @@ def get_wrong_guesses(candidates, lemma):
     the first token with constrained lemma.
     """
     wrong = []
-    found_lemma = False
+    # found_lemma = False
 
     for candidate_data in candidates.values():
         if candidate_data[1] == lemma:
-            found_lemma = True
+            # found_lemma = True
             break
 
-        if not found_lemma:
+        else:
+        # if not found_lemma:
             wrong.append(candidate_data[1])
 
     return wrong
@@ -177,12 +195,12 @@ def get_wrong_guesses(candidates, lemma):
 
 def process_candidates(candidates):
     return [(el, defs.get(annotation.get(el))) for el in candidates if annotation.get(el) and defs.get(annotation.get(el))]
-    
+
 
 # Load files
 # polish files: cat xxx.tsv | cut -f ... (keep fields for lemma, pdt_frame, synset, def) | tail -n +4 | grep -Pv '^\t'
 # possibly to integrate in the python code, once the file format will be standardized.
-wordnet = read_wordnet('./../files/LiLa_LatinWordnet.csv')
+wordnet = read_wordnet('/home/federica/vallex-pokus/files/LiLa_LatinWordnet.csv')
 defs, annotation = retrieve_definitions('/home/federica/Downloads/polished_total_frames_no31-40.tsv', wordnet)
 definitions = list(set(defs.values()))
 
@@ -231,7 +249,7 @@ TODO: experiment with different options.
 """
 
 # FLAIR embeddings exploiting Transformers architecture for tokens
-embedding = TransformerWordEmbeddings('bert-base-multilingual-cased', subtoken_pooling='mean', seed=42)
+embedding = TransformerWordEmbeddings(bert, repo_type= 'model', subtoken_pooling='mean', seed=42)
 word_embeddings = embeddings_in_df(embedding, tokens)
 
 """Then, filter the dataframe only for verbal entries, i.e. entries that are found in the dictionary `verbs`."""
@@ -301,7 +319,7 @@ verbal_embeddings['wrong_number'] = verbal_embeddings['wrong_guesses'].apply(len
 # extract only the 5 closest neighbours based on the similarity score value (with token constrained on the lemma only)
 verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
 verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates)
-verbal_embeddings.to_csv('constrained_candidate_senses.csv', columns=['token', 'token_id', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
+verbal_embeddings.to_csv(f'{bert}_constrained_candidate_senses.csv', columns=['token', 'token_id', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
 
 # TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
 
