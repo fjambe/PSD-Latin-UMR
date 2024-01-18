@@ -11,19 +11,21 @@ pd.set_option('display.max_columns', None)
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("bert_model", type=str, help="BERT model to be used. Options: latin, mbert."
-                                                 "To use a different model, specify its HF name.")
+parser.add_argument("bert_model", type=str, help="BERT model to be used."
+                                                 "Suggested options: mbert, latin, laberta, philberta."
+                                                 "To use a different model, specify its HF name as 'namespace/model'."
+                                                 "An exception is raised if the passed model is not retrievable.")
 args = parser.parse_args()
 if args.bert_model == 'mbert':
     bert = 'bert-base-multilingual-cased'
 elif args.bert_model == 'latin':
-    bert = '/home/federica/latin-bert/models/latin-bert'
-    # bert = 'model/latin-bert'
+    bert = '/home/federica/hf-latin-bert/bert-base-latin-uncased/'
+elif args.bert_model == 'laberta':
+    bert = 'bowphs/LaBerta'  # BERT model trained on Latin (Corpus Corporum)
+elif args.bert_model == 'philberta':
+    bert = 'bowphs/PhilBerta'  # BERT model trained on Latin and Greek
 else:
-    try:
-        bert = args.bert_model
-    except:  # improve exception handling
-        print('Please specify a valid BERT model.')
+    bert = args.bert_model
 
 
 # loading sentences (WN definitions)
@@ -215,7 +217,7 @@ AS OF NOW: implemented but not actually exploited.
 """
 
 # FLAIR embeddings exploiting Transformers architecture for sentences
-sent_embedding = TransformerDocumentEmbeddings('bert-base-multilingual-cased', seed=42)
+sent_embedding = TransformerDocumentEmbeddings(bert, seed=42)
 sent_embeddings = embeddings_in_df(sent_embedding, definitions, sentence_processing=True)
 
 
@@ -319,7 +321,7 @@ verbal_embeddings['wrong_number'] = verbal_embeddings['wrong_guesses'].apply(len
 # extract only the 5 closest neighbours based on the similarity score value (with token constrained on the lemma only)
 verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
 verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates)
-verbal_embeddings.to_csv(f'{bert}_constrained_candidate_senses.csv', columns=['token', 'token_id', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
+verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.csv', columns=['token', 'token_id', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
 
 # TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
 
