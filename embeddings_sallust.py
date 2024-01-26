@@ -10,24 +10,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 pd.set_option('display.max_columns', None)
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("bert_model", type=str, help="BERT model to be used."
-                                                 "Suggested options: mbert, latin, laberta, philberta."
-                                                 "To use a different model, specify its HF name as 'namespace/model'."
-                                                 "An exception is raised if the passed model is not retrievable.")
-args = parser.parse_args()
-if args.bert_model == 'mbert':
-    bert = 'bert-base-multilingual-cased'
-elif args.bert_model == 'latin':
-    bert = '/home/federica/hf-latin-bert/bert-base-latin-uncased/'
-elif args.bert_model == 'laberta':
-    bert = 'bowphs/LaBerta'  # BERT model trained on Latin (Corpus Corporum)
-elif args.bert_model == 'philberta':
-    bert = 'bowphs/PhilBerta'  # BERT model trained on Latin and Greek
-else:
-    bert = args.bert_model
-
-
 # loading sentences (WN definitions)
 def read_wordnet(wn_path):
     """Function to load Latin WordNet."""
@@ -97,11 +79,13 @@ def get_frames_from_tlayer(t_filename, pdt_tokens, prefix='.//{http://ufal.mff.c
         t = fr.getparent()
         pdt_verbs[t.attrib['id']]['frame'] = fr.text
         pdt_verbs[t.attrib['id']]['w_id'] = t.find(f'{prefix}lex.rf').text.replace('a#a', 'w#w')
+        sempos = t.find(f'{prefix}sempos').text
 
-        for w_id, v in pdt_tokens.items():
-            if w_id == pdt_verbs[t.attrib['id']]['w_id']:
-                pdt_verbs[t.attrib['id']]['form'] = pdt_tokens[w_id]['form']
-                v['id_tect'] = t.attrib['id']
+        if sempos == 'v':  # adding constraint on POS (verbs only)
+            for w_id, v in pdt_tokens.items():
+                if w_id == pdt_verbs[t.attrib['id']]['w_id']:
+                    pdt_verbs[t.attrib['id']]['form'] = pdt_tokens[w_id]['form']
+                    v['id_tect'] = t.attrib['id']
 
     # control because one annotation error was found in PDT data (11-20.t)
     pdt_verbs = {k: v for k, v in pdt_verbs.items() if len(v) == 3}
@@ -181,17 +165,11 @@ def get_wrong_guesses(candidates, lemma):
     the first token with constrained lemma.
     """
     wrong = []
-    # found_lemma = False
-
     for candidate_data in candidates.values():
         if candidate_data[1] == lemma:
-            # found_lemma = True
             break
-
         else:
-        # if not found_lemma:
             wrong.append(candidate_data[1])
-
     return wrong
 
 
@@ -199,138 +177,150 @@ def process_candidates(candidates):
     return [(el, defs.get(annotation.get(el))) for el in candidates if annotation.get(el) and defs.get(annotation.get(el))]
 
 
-# Load files
-# polish files: cat xxx.tsv | cut -f ... (keep fields for lemma, pdt_frame, synset, def) | tail -n +4 | grep -Pv '^\t'
-# possibly to integrate in the python code, once the file format will be standardized.
-wordnet = read_wordnet('/home/federica/vallex-pokus/files/LiLa_LatinWordnet.csv')
-defs, annotation = retrieve_definitions('/home/federica/Downloads/polished_total_frames_no31-40.tsv', wordnet)
-definitions = list(set(defs.values()))
+if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("bert_model", type=str, help="BERT model to be used."
+                                                     "Suggested options: mbert, latin, laberta, philberta."
+                                                     "To use a different model, specify HF name as 'namespace/model'."
+                                                     "An exception is raised if the passed model is not retrievable.")
+    args = parser.parse_args()
+    if args.bert_model == 'mbert':
+        bert = 'bert-base-multilingual-cased'
+    elif args.bert_model == 'latin':
+        bert = '/home/federica/hf-latin-bert/bert-base-latin-uncased/'
+    elif args.bert_model == 'laberta':
+        bert = 'bowphs/LaBerta'  # BERT model trained on Latin (Corpus Corporum)
+    elif args.bert_model == 'philberta':
+        bert = 'bowphs/PhilBerta'  # BERT model trained on Latin and Greek
+    else:
+        bert = args.bert_model
 
-"""
-# SENTENCE EMBEDDINGS for synset definitions
-Computation of sentence embeddings for definitions that I manually assigned to verbal forms in Sallust.
-TODO: restructure `definitions` by adding all synset-definition pairs + definitions added by me,
-instead of storing only definitions already observed in the text and manually annotated.
+    # Load files
+    # polish files: cat xxx.tsv | cut -f ... (keep lemma, pdt_frame, synset, def) | tail -n +4 | grep -Pv '^\t'
+    # possibly to integrate in the python code, once the file format will be standardized.
+    wordnet = read_wordnet('/home/federica/vallex-pokus/files/LiLa_LatinWordnet.csv')
+    defs, annotation = retrieve_definitions('/home/federica/Downloads/polished_total_frames_no31-40.tsv', wordnet)
+    definitions = list(set(defs.values()))
 
-AS OF NOW: implemented but not actually exploited.
-"""
+    """
+    # SENTENCE EMBEDDINGS for synset definitions
+    Computation of sentence embeddings for definitions that I manually assigned to verbal forms in Sallust.
+    TODO: restructure `definitions` by adding all synset-definition pairs + definitions added by me,
+    instead of storing only definitions already observed in the text and manually annotated.
+    
+    AS OF NOW: implemented but not actually exploited.
+    """
 
-# FLAIR embeddings exploiting Transformers architecture for sentences
-sent_embedding = TransformerDocumentEmbeddings(bert, seed=42)
-sent_embeddings = embeddings_in_df(sent_embedding, definitions, sentence_processing=True)
+    # FLAIR embeddings exploiting Transformers architecture for sentences
+    sent_embedding = TransformerDocumentEmbeddings(bert, seed=42)
+    sent_embeddings = embeddings_in_df(sent_embedding, definitions, sentence_processing=True)
 
+    """
+    Compute contextual embeddings of verbal tokens in Latin.
+    1. Load Sallust 31-40 as test file: file for which I will try to extract synset/definition candidates.
+    2. Identify verbal tokens thanks to PDT frame annotation (morphological + tectogrammatical layers) and
+    reconstruct the full text (sequence of sentences) from there.
+    """
 
-"""
-Compute contextual embeddings of verbal tokens in Latin.
-1. Load Sallust 31-40 as test file: file for which I will try to extract synset/definition candidates.
-2. Identify verbal tokens thanks to PDT frame annotation (morphological + tectogrammatical layers) and
-reconstruct the full text (sequence of sentences) from there.
-"""
+    # retrieving tokens from file
+    tokens = get_token_from_mlayer('sallust-libri31-40.afun.normalized.m')
+    # extracting predicates
+    verbs, tokens = get_frames_from_tlayer('sallust-libri31-40.afun.normalized.t', tokens)
 
-# retrieving tokens from file
-tokens = get_token_from_mlayer('sallust-libri31-40.afun.normalized.m')
-# extracting predicates
-verbs, tokens = get_frames_from_tlayer('sallust-libri31-40.afun.normalized.t', tokens)
+    """
+    3. Select BERT model for Latin. Which one?
+    
+    > `bert-base-multilingual-cased`:
+    from the inference API fill-mask, performances on the sentence *'[MASK] it ad forum'* look very bad.
+    I tried a RoBERTa model for Latin but I get the following warning:
+    "Some weights of RobertaModel were not initialized from the model checkpoint at `pstroe/roberta-base-latin-cased`
+    and are newly initialized. You should probably TRAIN this model on a down-stream task to be able to use it
+    for predictions and inference."
+    
+    **Subtoken_pooling** (Flair library) is used to convert subword embeddings to word embeddings.
+    3 more options are available to perform this transformation, besides `mean`: `first`, `last`, `first_last`
+    (see https://flairnlp.github.io/docs/tutorial-embeddings/transformer-embeddings#Pooling-operation).
+    
+    TODO: experiment with different options.
+    """
 
-"""
-3. Select BERT model for Latin. Which one?
+    # FLAIR embeddings exploiting Transformers architecture for tokens
+    embedding = TransformerWordEmbeddings(bert, repo_type= 'model', subtoken_pooling='mean', seed=42)
+    word_embeddings = embeddings_in_df(embedding, tokens)
 
-> `bert-base-multilingual-cased`:
-from the inference API fill-mask, performances on the sentence *'[MASK] it ad forum'* look very bad.
-I tried a RoBERTa model for Latin but I get the following warning:
-"Some weights of RobertaModel were not initialized from the model checkpoint at `pstroe/roberta-base-latin-cased`
-and are newly initialized. You should probably TRAIN this model on a down-stream task to be able to use it
-for predictions and inference."
+    """Then, filter the dataframe only for verbal entries, i.e. entries that are found in the dictionary `verbs`."""
+    # Keeping only verbal tokens, which are assigned a frame
+    verbal = [k for k in verbs]
+    verbal_embeddings = word_embeddings[word_embeddings['id_tect'].isin(verbal)]
 
-**Subtoken_pooling** (Flair library) is used to convert subword embeddings to word embeddings.
-3 more options are available to perform this transformation, besides `mean`: `first`, `last`, `first_last`
-(see https://flairnlp.github.io/docs/tutorial-embeddings/transformer-embeddings#Pooling-operation).
+    """
+    Token similarity
+    For each verbal token in Sallust31-40 (or any text to annotate), compute similarity wrt other verbal tokens in the text.
+    This means that text (i.e., context) needs to be retrieved also for Sallust 1-30 + 41-61 (reference corpus).
+    """
 
-TODO: experiment with different options.
-"""
+    # retrieving reference tokens from file
+    ref_tokens = get_token_from_mlayer('sallust-libri1-10.afun.normalized.m')
+    ref_tokens.update(get_token_from_mlayer('sallust-libri11-20.afun.normalized.m'))
+    ref_tokens.update(get_token_from_mlayer('sallust-libri21-30.afun.normalized.m'))
+    ref_tokens.update(get_token_from_mlayer('sallust-libri41-51.afun.normalized.m'))
+    ref_tokens.update(get_token_from_mlayer('sallust-libri52-61.afun.normalized.m'))
 
-# FLAIR embeddings exploiting Transformers architecture for tokens
-embedding = TransformerWordEmbeddings(bert, repo_type= 'model', subtoken_pooling='mean', seed=42)
-word_embeddings = embeddings_in_df(embedding, tokens)
+    # extracting predicates
+    ref_verbs, ref_tokens = get_frames_from_tlayer('sallust-libri1-10.afun.normalized.t', ref_tokens)
+    temp_verbs, temp_tokens = get_frames_from_tlayer('sallust-libri11-20.afun.normalized.t', ref_tokens)
+    ref_tokens.update(temp_tokens), ref_verbs.update(temp_verbs)
+    temp_verbs, temp_tokens = get_frames_from_tlayer('sallust-libri21-30.afun.normalized.t', ref_tokens)
+    ref_tokens.update(temp_tokens), ref_verbs.update(temp_verbs)
+    temp_verbs, temp_tokens = get_frames_from_tlayer('sallust-libri41-51.afun.normalized.t', ref_tokens)
+    ref_tokens.update(temp_tokens), ref_verbs.update(temp_verbs)
+    temp_verbs, temp_tokens = get_frames_from_tlayer('sallust-libri52-61.afun.normalized.t', ref_tokens)
+    ref_tokens.update(temp_tokens), ref_verbs.update(temp_verbs)
 
-"""Then, filter the dataframe only for verbal entries, i.e. entries that are found in the dictionary `verbs`."""
-# Keeping only verbal tokens, which are assigned a frame
-verbal = [k for k in verbs]
-verbal_embeddings = word_embeddings[word_embeddings['id_tect'].isin(verbal)]
+    """
+    For each token in `verbs`, find its n (n = 5) closest neighbours which are also contained in the `verbs` dictionary.
+    Therefore, compute embeddings for `ref_verbs` need to be computed.
+    """
 
+    # Compute embeddings for ref_verbs
+    ref_word_embeddings = embeddings_in_df(embedding, ref_tokens)
 
-"""
-Token similarity
-For each verbal token in Sallust31-40 (or any text to annotate), compute similarity wrt other verbal tokens in the text.
-This means that text (i.e., context) needs to be retrieved also for Sallust 1-30 + 41-61 (reference corpus).
-"""
+    # Keeping only verbal tokens, which are assigned a frame
+    ref_verbal = [k for k in ref_verbs]
+    ref_verbal_embeddings = ref_word_embeddings[ref_word_embeddings['id_tect'].isin(ref_verbal)]
 
-# retrieving reference tokens from file
-ref_tokens = get_token_from_mlayer('sallust-libri1-10.afun.normalized.m')
-ref_tokens.update(get_token_from_mlayer('sallust-libri11-20.afun.normalized.m'))
-ref_tokens.update(get_token_from_mlayer('sallust-libri21-30.afun.normalized.m'))
-ref_tokens.update(get_token_from_mlayer('sallust-libri41-51.afun.normalized.m'))
-ref_tokens.update(get_token_from_mlayer('sallust-libri52-61.afun.normalized.m'))
+    """
+    Now token similarity can be computed.
+    From https://intellica-ai.medium.com/comparison-of-different-word-embeddings-on-text-similarity-a-use-case-in-nlp-e83e08469c1c:
+    "Once we will have vectors of the given text chunk, to compute the similarity between generated vectors,
+    statistical methods for the vector similarity can be used. Such techniques are cosine similarity, Euclidean distance,
+    Jaccard distance, word mover’s distance. Cosine similarity is the technique that is being widely used for
+    text similarity + explanations on other measures."
+    
+    TODO: check.
+    """
 
-# extracting predicates
-ref_verbs, ref_tokens = get_frames_from_tlayer('sallust-libri1-10.afun.normalized.t', ref_tokens)
-temp_verbs, temp_tokens = get_frames_from_tlayer('sallust-libri11-20.afun.normalized.t', ref_tokens)
-ref_tokens.update(temp_tokens), ref_verbs.update(temp_verbs)
-temp_verbs, temp_tokens = get_frames_from_tlayer('sallust-libri21-30.afun.normalized.t', ref_tokens)
-ref_tokens.update(temp_tokens), ref_verbs.update(temp_verbs)
-temp_verbs, temp_tokens = get_frames_from_tlayer('sallust-libri41-51.afun.normalized.t', ref_tokens)
-ref_tokens.update(temp_tokens), ref_verbs.update(temp_verbs)
-temp_verbs, temp_tokens = get_frames_from_tlayer('sallust-libri52-61.afun.normalized.t', ref_tokens)
-ref_tokens.update(temp_tokens), ref_verbs.update(temp_verbs)
+    result = verbal_embeddings.apply(apply_similarity_and_sort, axis=1)
+    # Concatenate the result with the original DataFrame
+    verbal_embeddings = pd.concat([verbal_embeddings, result], axis=1)
 
-"""
-For each token in `verbs`, find its n (n = 5) closest neighbours which are also contained in the `verbs` dictionary.
-Therefore, compute embeddings for `ref_verbs` need to be computed.
-"""
+    # retrieve candidates that are selected as appropriate before the first one with constrained lemma
+    verbal_embeddings['wrong_guesses'] = verbal_embeddings.apply(lambda row: get_wrong_guesses(row['all_candidates'], row['lemma']), axis=1)
+    verbal_embeddings['wrong_number'] = verbal_embeddings['wrong_guesses'].apply(len)
 
-# Compute embeddings for ref_verbs
-ref_word_embeddings = embeddings_in_df(embedding, ref_tokens)
+    # extract only the 5 closest neighbours based on the similarity score (with token constrained on the lemma only)
+    verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
+    verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates)
+    verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.csv', columns=['token', 'token_id', 'lemma', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
 
-# Keeping only verbal tokens, which are assigned a frame
-# ref_verbal = [v['form'] for v in ref_verbs.values()]
-ref_verbal = [k for k in ref_verbs]
-ref_verbal_embeddings = ref_word_embeddings[ref_word_embeddings['id_tect'].isin(ref_verbal)]
+    # TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
 
-
-"""
-Now token similarity can be computed.
-From https://intellica-ai.medium.com/comparison-of-different-word-embeddings-on-text-similarity-a-use-case-in-nlp-e83e08469c1c:
-"Once we will have vectors of the given text chunk, to compute the similarity between generated vectors,
-statistical methods for the vector similarity can be used. Such techniques are cosine similarity, Euclidean distance,
-Jaccard distance, word mover’s distance. Cosine similarity is the technique that is being widely used for
-text similarity + explanations on other measures."
-
-TODO: check.
-"""
-
-result = verbal_embeddings.apply(apply_similarity_and_sort, axis=1)
-# Concatenate the result with the original DataFrame
-verbal_embeddings = pd.concat([verbal_embeddings, result], axis=1)
-
-# retrieve candidates that are selected as appropriate before the first one with constrained lemma
-verbal_embeddings['wrong_guesses'] = verbal_embeddings.apply(lambda row: get_wrong_guesses(row['all_candidates'], row['lemma']), axis=1)
-verbal_embeddings['wrong_number'] = verbal_embeddings['wrong_guesses'].apply(len)
-
-
-# extract only the 5 closest neighbours based on the similarity score value (with token constrained on the lemma only)
-verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
-verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates)
-verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.csv', columns=['token', 'token_id', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
-
-# TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
-
-
-# list of possible definition for my token: given a lemma, I have column definition in dataframe wordnet
-# for each of these definition I can already retrieve its embeddings in sent_embeddings df,
-# where I have sent_text - wn_synset_id - sent_emb
-# each of the candidates: each el in possible_synsets
-# for each definition (d) of my token, compute sentence similarity with each of the candidates (c)
-# how to compute sentence similarity? do I need sentences or embeddings?
-# possibly reduce the number of candidates to 3.
+    # list of possible definition for my token: given a lemma, I have column definition in dataframe wordnet
+    # for each of these definition I can already retrieve its embeddings in sent_embeddings df,
+    # where I have sent_text - wn_synset_id - sent_emb
+    # each of the candidates: each el in possible_synsets
+    # for each definition (d) of my token, compute sentence similarity with each of the candidates (c)
+    # how to compute sentence similarity? do I need sentences or embeddings?
+    # possibly reduce the number of candidates to 3.
 
