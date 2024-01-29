@@ -189,10 +189,10 @@ if __name__ == "__main__":
         bert = 'bert-base-multilingual-cased'
     elif args.bert_model == 'latin':
         bert = '/home/federica/hf-latin-bert/bert-base-latin-uncased/'
-    elif args.bert_model == 'laberta':
-        bert = 'bowphs/LaBerta'  # BERT model trained on Latin (Corpus Corporum)
+    elif args.bert_model == 'philta':
+        bert = 'bowphs/PhilTa'  # T5 model trained on Latin,Greek and English
     elif args.bert_model == 'philberta':
-        bert = 'bowphs/PhilBerta'  # BERT model trained on Latin and Greek
+        bert = 'bowphs/PhilBerta'  # BERT model trained on Latin, Greek and English
     else:
         bert = args.bert_model
 
@@ -246,7 +246,7 @@ if __name__ == "__main__":
     """
 
     # FLAIR embeddings exploiting Transformers architecture for tokens
-    embedding = TransformerWordEmbeddings(bert, repo_type= 'model', subtoken_pooling='mean', seed=42)
+    embedding = TransformerWordEmbeddings(bert, repo_type='model', subtoken_pooling='mean', seed=42)
     word_embeddings = embeddings_in_df(embedding, tokens)
 
     """Then, filter the dataframe only for verbal entries, i.e. entries that are found in the dictionary `verbs`."""
@@ -256,7 +256,7 @@ if __name__ == "__main__":
 
     """
     Token similarity
-    For each verbal token in Sallust31-40 (or any text to annotate), compute similarity wrt other verbal tokens in the text.
+    For each verbal token in target file, compute similarity wrt other verbal tokens in the text.
     This means that text (i.e., context) needs to be retrieved also for Sallust 1-30 + 41-61 (reference corpus).
     """
 
@@ -294,8 +294,8 @@ if __name__ == "__main__":
     Now token similarity can be computed.
     From https://intellica-ai.medium.com/comparison-of-different-word-embeddings-on-text-similarity-a-use-case-in-nlp-e83e08469c1c:
     "Once we will have vectors of the given text chunk, to compute the similarity between generated vectors,
-    statistical methods for the vector similarity can be used. Such techniques are cosine similarity, Euclidean distance,
-    Jaccard distance, word mover’s distance. Cosine similarity is the technique that is being widely used for
+    statistical methods for the vector similarity can be used. Such techniques are cosine similarity, Euclidean
+    distance, Jaccard distance, word mover’s distance. Cosine similarity is the technique that is being widely used for
     text similarity + explanations on other measures."
     
     TODO: check.
@@ -323,4 +323,3 @@ if __name__ == "__main__":
     # for each definition (d) of my token, compute sentence similarity with each of the candidates (c)
     # how to compute sentence similarity? do I need sentences or embeddings?
     # possibly reduce the number of candidates to 3.
-
