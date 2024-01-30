@@ -8,11 +8,11 @@ from lxml import etree
 
 
 def read_filename(filename):
-    """Function to read the input CSV file.
+    """Function to read the input TSV file.
     Expected format (6 columns):token, token_id, id_tect, possible_synsets, wrong_number, wrong_guesses."""
     stored_infile = {}
     with open(filename, 'r') as infile:
-        reader = csv.DictReader(infile)
+        reader = csv.DictReader(infile, delimiter='\t')
         for row in reader:
             token = row['token']
             token_id = row['token_id']
@@ -58,7 +58,6 @@ def frequent_verbs(no_sum=True, no_habeo=True):
         all_lemmas = {k: lm for k, lm in all_lemmas.items() if lm != 'sum'}
     if no_habeo:
         all_lemmas = {k: lm for k, lm in all_lemmas.items() if lm != 'habeo'}
-    print(all_lemmas)
     return Counter(all_lemmas.values())
 
 

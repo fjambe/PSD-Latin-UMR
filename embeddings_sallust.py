@@ -185,7 +185,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.bert_model == 'mbert':
         bert = 'bert-base-multilingual-cased'
-    elif args.bert_model == 'latin_bert':
+    elif args.bert_model == 'latin-bert':
         bert = '/home/federica/hf-latin-bert/bert-base-latin-uncased/'
     elif args.bert_model == 'philta':
         bert = 'bowphs/PhilTa'  # T5 model trained on Latin,Greek and English
@@ -278,7 +278,7 @@ if __name__ == "__main__":
     # extract only the 5 closest neighbours based on the similarity score (with token constrained on the lemma only)
     verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
     verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates)
-    verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.csv', columns=['token', 'token_id', 'lemma', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
+    verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.tsv', sep='\t', columns=['token', 'token_id', 'lemma', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
 
     # TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
 
