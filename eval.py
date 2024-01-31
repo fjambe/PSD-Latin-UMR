@@ -25,82 +25,103 @@ def read_filename(filename):
             wrong_number = row['wrong_number']
             wrong_guesses = row['wrong_guesses']
 
-            stored_infile[token_id] = {
+            stored_infile[id_tect] = {
                 'token': token,
                 'lemma': lemma,
-                'id_tect': id_tect,
+                'token_id': token_id,
                 'possible_synsets': possible_synsets,
                 'wrong_number': int(wrong_number),
                 'wrong_guesses': wrong_guesses}
     return stored_infile
 
 
-def get_lemmas_from_tlayer(t_filename, prefix='.//{http://ufal.mff.cuni.cz/pdt/pml/}'):
-    """Function to retrieve all nodes with a valency frame in PDT tectogrammatical layer."""
-    filename = f'/home/federica/vallex-pokus/LDT_PML_tectogrammatical_130317/LDT_Sallust/Sallust_all_files/{t_filename}'
-    t_tree = etree.parse(filename)
-    t_elem = t_tree.getroot()
-    frames = t_elem.findall(f'{prefix}val_frame.rf')
-    pdt_verbs = {}
-    for fr in frames:
-        t = fr.getparent()
-        if t.find(f'{prefix}sempos').text == 'v':  # adding constraint on POS (verbs only)
-            pdt_verbs[t.attrib['id']] = t.find(f'{prefix}t_lemma').text
-    return pdt_verbs
+def retrieve_annotated_verbs(filename):
+    """Function to retrieve only annotated predicates."""
+    annotated = {}
+    with open(filename, 'r', encoding='utf8') as infile:
+        for line in infile.readlines():
+            line = line.strip().split('\t')
+            # discard entries with len < 5, as they have no synset assigned
+            if len(line) == 5:  # standard case
+                if line[4].startswith('v#'):  # only verbal frames
+                    annotated[line[0]] = (line[1], line[3])  # (lemma, UMR_id)
+            elif len(line) == 6:  # cases where a new definitions was assigned
+                if line[4].startswith('v#'):
+                    annotated[line[0]] = (line[1], line[3])  # (lemma, UMR_id)
+    return annotated
 
 
-def frequent_verbs(no_sum=True, no_habeo=True):
+def count_verbs(r_verbs, t_verbs, no_sum=True, no_habeo=True):
     """Function that retrieves the 10 (or n) most frequent lemmas in the whole corpus."""
-    all_lemmas = get_lemmas_from_tlayer('sallust-libri1-10.afun.normalized.t')
-    all_lemmas.update(get_lemmas_from_tlayer('sallust-libri11-20.afun.normalized.t'))
-    all_lemmas.update(get_lemmas_from_tlayer('sallust-libri21-30.afun.normalized.t'))
-    all_lemmas.update(get_lemmas_from_tlayer('sallust-libri31-40.afun.normalized.t'))
-    all_lemmas.update(get_lemmas_from_tlayer('sallust-libri41-51.afun.normalized.t'))
-    all_lemmas.update(get_lemmas_from_tlayer('sallust-libri52-61.afun.normalized.t'))
+    all_lemmas = {**r_verbs, **t_verbs}
     if no_sum:
-        all_lemmas = {k: lm for k, lm in all_lemmas.items() if lm != 'sum'}
+        all_lemmas = {k: lm[0] for k, lm in r_verbs.items() if lm != 'sum'}
     if no_habeo:
-        all_lemmas = {k: lm for k, lm in all_lemmas.items() if lm != 'habeo'}
+        all_lemmas = {k: lm[0] for k, lm in r_verbs.items() if lm != 'habeo'}
     return Counter(all_lemmas.values())
 
 
-def oov_guesses(stored_infile, exclude=False, lemma_filter=None):
-    """
-    Function to compute the average number (arithmetic mean) of candidate guesses extracted
+def count_only_once_verbs(r_verbs, t_verbs):
+    """Function that retrieves the target verbs occurring in the reference corpus only once."""
+    ref_lemmas = Counter({k: v[0] for k, v in r_verbs.items()}.values())
+    return [lm[0] for t_id, lm in t_verbs.items() if ref_lemmas.get(t_verbs[t_id][0]) == 1]
+
+
+def interpret_guesses(stored_infile, exclude=False, lemma_filter=None, seen=None, no_zero_no_one=None):
+    """Function to compute the average number (arithmetic mean) of candidate guesses extracted
     before retrieving one with the same lemma as the token to be annotated.
-    Option to exclude cases of lemmas occurring only once (number of guesses = 1485).
-    """
-    if exclude:
-        numbers = [item['wrong_number'] for item in stored_infile.values() if item['wrong_number'] != 1322]
-    else:
-        numbers = [item['wrong_number'] for item in stored_infile.values()]
+    Options:
+    1. exclude cases of lemmas occurring only once (number of guesses = 1273).
+    2. consider only a given subset of lemmas.
+    3. consider only verbs whose synset is also present in the reference corpus.
+    4. exclude cases of lemmas occurring either zero or one time(s) in the reference corpus."""
 
     if lemma_filter:  # lemma_filter is a list of lemmas
         stored_infile = {k: v for k, v in stored_infile.items() if v.get('lemma') in lemma_filter}
+    elif seen:
+        seen_synsets = [vr[1] for vr in seen.values()]
+        to_keep = [k for k, v in tgt_verbs.items() if v[1] in seen_synsets]  # v1[1] = synset-XX
+        stored_infile = {k: v for k, v in stored_infile.items() if k in to_keep}
+    elif no_zero_no_one:
+        stored_infile = {k: v for k, v in stored_infile.items() if v['lemma'] not in no_zero_no_one}
+
+    if exclude or no_zero_no_one:
+        numbers = [item['wrong_number'] for item in stored_infile.values() if item['wrong_number'] != 1273]
+    else:
         numbers = [item['wrong_number'] for item in stored_infile.values()]
+
     return round(mean(numbers), 2)
 
 
 if __name__ == "__main__":
-
     args = parser.parse_args()
 
     # Load and extract information
     info = read_filename(args.file)
-    frequency = frequent_verbs()  # e.g. [('facio', 87), ('habeo', 83), ...]
+    ref_verbs = retrieve_annotated_verbs('/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH'
+                                         '/polished_total_frames_no31-40.tsv')
+    tgt_verbs = retrieve_annotated_verbs('/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH'
+                                         '/polished_frames_only31-40.tsv')
+    frequency = count_verbs(ref_verbs, tgt_verbs)  # e.g. [('facio', 81), ('dico', 39), ...]
     most_freq = [pair[0] for pair in frequency.most_common(10)]  # i.e., lemmas
-    print(most_freq)
+    only_once = count_only_once_verbs(ref_verbs, tgt_verbs)  # 37, 13.7%
 
     # Compute and print out statistics
-    avg_guess_tot = oov_guesses(info)
-    avg_guess = oov_guesses(info, exclude=True)
-    avg_freq_guess = oov_guesses(info, lemma_filter=most_freq)
+    avg_guess_tot = interpret_guesses(info)
+    avg_guess_no_oov = interpret_guesses(info, exclude=True)
+    avg_not_once_guess = interpret_guesses(info, no_zero_no_one=only_once)
+    avg_freq_guess = interpret_guesses(info, lemma_filter=most_freq)
+    avg_guess_seen = interpret_guesses(info, seen=ref_verbs)
 
-    all_entries = len([k for k in info])  # 279
-    oov = len([v for v in info.values() if v['wrong_number'] == 1322])  # 54
-    oov_rate = round(oov / all_entries * 100, 2)  # 19.35%
+    all_entries = len(tgt_verbs)  # 270
+    oov = len([v for v in info.values() if v['wrong_number'] == 1273])  # 53
+    oov_rate = round(oov / all_entries * 100, 2)  # 19.63%
 
-    print('Average number of retrieved candidates:', avg_guess_tot,
-          '\nAverage number of retrieved candidates excluding hapaxes:', avg_guess,
+    print('10 most frequent verbs:', most_freq,
+          '\nAverage number of retrieved candidates:', avg_guess_tot,
+          '\nAverage number of retrieved candidates excluding hapaxes:', avg_guess_no_oov,
+          '\nAverage number of retrieved candidates with only seen synsets:', avg_guess_seen,
           '\nAverage number of retrieved candidates with most frequent verbs:', avg_freq_guess,
-          '\nOOV rate:', oov_rate, '%')
+          '\nOOV rate:', oov_rate, '%',
+          '\nNumber of target predicates occurring only once in the reference corpus:', len(only_once),
+          '\nPercentage of these verbs:', round(len(only_once) / len(tgt_verbs) * 100, 2), '%')
