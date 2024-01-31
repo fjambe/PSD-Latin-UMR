@@ -6,6 +6,9 @@ from statistics import mean
 from collections import Counter
 from lxml import etree
 
+parser = argparse.ArgumentParser()
+parser.add_argument("file", type=str, help="File to be evaluated.")
+
 
 def read_filename(filename):
     """Function to read the input TSV file.
@@ -80,8 +83,6 @@ def oov_guesses(stored_infile, exclude=False, lemma_filter=None):
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("file", type=str, help="File to be evaluated.")
     args = parser.parse_args()
 
     # Load and extract information

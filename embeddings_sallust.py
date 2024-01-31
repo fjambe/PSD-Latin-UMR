@@ -7,14 +7,22 @@ from collections import defaultdict
 from flair.embeddings import TransformerWordEmbeddings, TransformerDocumentEmbeddings
 from flair.data import Sentence
 from sklearn.metrics.pairwise import cosine_similarity
+
 pd.set_option('display.max_columns', None)
+
+parser = argparse.ArgumentParser()
+parser.add_argument("bert_model", type=str, help="BERT model to be used."
+                                                 "Suggested options: mbert, latin, laberta, philberta."
+                                                 "To use a different model, specify HF name as 'namespace/model'."
+                                                 "An exception is raised if the passed model is not retrievable.")
 
 
 def read_wordnet(wn_path):
     """Function to load Latin WordNet."""
     with open(wn_path, 'r', encoding='utf8') as wordn:
         lwn = pd.read_csv(wordn, header=0, usecols=lambda x: x not in ['id', 'type'])
-        lwn['Transf_synset'] = lwn['id_synset'].str.removeprefix('http://wordnet-rdf.princeton.edu/wn30/').str.split('-')
+        lwn['Transf_synset'] = lwn['id_synset'].str.removeprefix('http://wordnet-rdf.princeton.edu/wn30/').str.split(
+            '-')
         lwn['Transf_synset'] = lwn['Transf_synset'].str[1] + '#' + lwn['Transf_synset'].str[0]
     return lwn
 
@@ -103,7 +111,8 @@ def embeddings_in_df(embedder, tokens_or_document, sentence_processing=False):
         for t, v in tokens_or_document.items():  # tokens_dict
             sent_id = t.strip('w#w-').split('W')[0]
             if sent_id not in sents:
-                sents[sent_id] = [v['form'] for t, v in tokens_or_document.items() if t.strip('w#w-').split('W')[0] == sent_id]
+                sents[sent_id] = [v['form'] for t, v in tokens_or_document.items() if
+                                  t.strip('w#w-').split('W')[0] == sent_id]
             sentenced_tokens[sent_id][t] = v
 
         # calculating embeddings
@@ -172,16 +181,12 @@ def get_wrong_guesses(candidates, lemma):
 
 
 def process_candidates(candidates):
-    return [(el, defs.get(annotation.get(el))) for el in candidates if annotation.get(el) and defs.get(annotation.get(el))]
+    return [(el, defs.get(ref_annotation.get(el))) for el in candidates if
+            ref_annotation.get(el) and defs.get(ref_annotation.get(el))]
 
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("bert_model", type=str, help="BERT model to be used."
-                                                     "Suggested options: mbert, latin, laberta, philberta."
-                                                     "To use a different model, specify HF name as 'namespace/model'."
-                                                     "An exception is raised if the passed model is not retrievable.")
     args = parser.parse_args()
     if args.bert_model == 'mbert':
         bert = 'bert-base-multilingual-cased'
@@ -198,7 +203,9 @@ if __name__ == "__main__":
     # polish files: cat xxx.tsv | cut -f ... (keep lemma, pdt_frame, synset, def) | tail -n +4 | grep -Pv '^\t'
     # possibly to integrate in the python code, once the file format will be standardized.
     wordnet = read_wordnet('/home/federica/vallex-pokus/files/LiLa_LatinWordnet.csv')
-    defs, annotation = retrieve_definitions('/home/federica/Downloads/polished_total_frames_no31-40.tsv', wordnet)
+    defs, ref_annotation = retrieve_definitions('/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH/polished_total_frames_no31-40.tsv', wordnet)
+    defs_temp, tgt_annotation = retrieve_definitions('/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH/polished_frames_only31-40.tsv', wordnet)
+    defs.update(defs_temp)
     definitions = list(set(defs.values()))
 
     """
@@ -210,17 +217,17 @@ if __name__ == "__main__":
     """
 
     # FLAIR embeddings exploiting Transformers architecture for sentences
-    sent_embedding = TransformerDocumentEmbeddings(bert, seed=42)
-    sent_embeddings = embeddings_in_df(sent_embedding, definitions, sentence_processing=True)
+    # sent_embedding = TransformerDocumentEmbeddings(bert, seed=42)
+    # sent_embeddings = embeddings_in_df(sent_embedding, definitions, sentence_processing=True)
 
     # retrieving tokens from file
-    tokens = get_token_from_mlayer('sallust-libri31-40.afun.normalized.m')
+    tgt_tokens = get_token_from_mlayer('sallust-libri31-40.afun.normalized.m')
     # extracting predicates (target tokens)
-    verbs, tokens = get_frames_from_tlayer('sallust-libri31-40.afun.normalized.t', tokens)
+    tgt_verbs, tgt_tokens = get_frames_from_tlayer('sallust-libri31-40.afun.normalized.t', tgt_tokens)
 
     # FLAIR embeddings exploiting Transformers architecture for tokens
     embedding = TransformerWordEmbeddings(bert, repo_type='model', subtoken_pooling='mean', seed=42)
-    word_embeddings = embeddings_in_df(embedding, tokens)
+    word_embeddings = embeddings_in_df(embedding, tgt_tokens)
 
     # Subtoken_pooling (Flair library) is used to convert subword embeddings to word embeddings.
     # 3 more options are available for this transformation, besides `mean`: `first`, `last`, `first_last`
@@ -228,8 +235,10 @@ if __name__ == "__main__":
 
     # Filtering the dataframe and keeping only verbal tokens, which are assigned a frame
     # (and are found in the dictionary `verbs`)
-    verbal = [k for k in verbs]
-    verbal_embeddings = word_embeddings[word_embeddings['id_tect'].isin(verbal)]
+    tgt_verbal = [k for k in tgt_verbs]
+    tgt_verbal = [v for v in tgt_verbal if v in tgt_annotation]  # keep only annotated predicates
+
+    verbal_embeddings = word_embeddings[word_embeddings['id_tect'].isin(tgt_verbal)]
 
     # retrieving reference tokens from files --> reference corpus
     ref_tokens = get_token_from_mlayer('sallust-libri1-10.afun.normalized.m')
@@ -254,7 +263,12 @@ if __name__ == "__main__":
 
     # keeping only verbal tokens, which are assigned a frame
     ref_verbal = [k for k in ref_verbs]
+    ref_verbal = [v for v in ref_verbal if v in ref_annotation]  # keep only annotated predicates
     ref_verbal_embeddings = ref_word_embeddings[ref_word_embeddings['id_tect'].isin(ref_verbal)]
+
+    # statistics (total number of predicates), to be run just once
+    print('Reference corpus:', len(ref_verbal))
+    print('Target corpus:', len(tgt_verbal))
 
     # computing token similarity
     result = verbal_embeddings.apply(apply_similarity_and_sort, axis=1)
@@ -271,14 +285,18 @@ if __name__ == "__main__":
     """
 
     # retrieve candidates that are selected as appropriate before the first one with constrained lemma
-    verbal_embeddings['wrong_guesses'] = verbal_embeddings.apply(lambda row: get_wrong_guesses(row['all_candidates'], row['lemma']), axis=1)
+    verbal_embeddings['wrong_guesses'] = verbal_embeddings.apply(
+        lambda row: get_wrong_guesses(row['all_candidates'], row['lemma']), axis=1)
     verbal_embeddings['wrong_number'] = verbal_embeddings['wrong_guesses'].apply(len)
     verbal_embeddings['wrong_guesses'] = verbal_embeddings['wrong_guesses'].apply(lambda w: ';'.join(w))
 
     # extract only the 5 closest neighbours based on the similarity score (with token constrained on the lemma only)
-    verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
+    verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(
+        lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
     verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates)
-    verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.tsv', sep='\t', columns=['token', 'token_id', 'lemma', 'id_tect', 'possible_synsets', 'wrong_number', 'wrong_guesses'], encoding='utf-8', index=False)
+    verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.tsv', sep='\t',
+                             columns=['token', 'token_id', 'lemma', 'id_tect', 'possible_synsets', 'wrong_number',
+                                      'wrong_guesses'], encoding='utf-8', index=False)
 
     # TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
 
