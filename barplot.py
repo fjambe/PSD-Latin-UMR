@@ -3,13 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # set width of bar
-barWidth = 0.25
-fig = plt.subplots(figsize=(12, 8))
+barWidth = 0.2
+fig = plt.subplots(figsize=(14, 9))
 
 # set height of bar
-guess_tot = [889.65, 950.47, 860.45, 1068.88]
-guess_nohapax = [785.88, 861.31, 749.68, 1008.13]
-guess_freq = [279.81, 404.85, 269.52, 570.04]
+guess_tot = [906.81, 955.6, 876.05, 1057.71]
+guess_nohapax = [804.13, 866.59, 764.74, 997.34]
+guess_seen = [751.37, 846.96, 730.56, 958.8]
+guess_freq = [188.5, 356.68, 159.5, 545.27]
+
 
 # Set position of bar on X axis
 br1 = np.arange(len(guess_tot))
@@ -22,15 +24,19 @@ plt.bar(br1, guess_tot, color='darkred', width=barWidth,
         edgecolor='darkred', label='guess_tot')
 plt.bar(br2, guess_nohapax, color='sandybrown', width=barWidth,
         edgecolor='sandybrown', label='guess_no_hapax')
-plt.bar(br3, guess_freq, color='steelblue', width=barWidth,
-        edgecolor='steelblue', label='guess_frequent')
+plt.bar(br3, guess_seen, color='steelblue', width=barWidth,
+        edgecolor='steelblue', label='guess_seen')
+plt.bar(br4, guess_freq, color='lightpink', width=barWidth,
+        edgecolor='lightpink', label='guess_frequent')
 
 for i, value in enumerate(guess_tot):
     plt.text(i, value + 10, f'{value:.2f}', ha='center', va='bottom')
 for i, value in enumerate(guess_nohapax):
     plt.text(i + barWidth, value + 10, f'{value:.2f}', ha='center', va='bottom')
-for i, value in enumerate(guess_freq):
+for i, value in enumerate(guess_seen):
     plt.text(i + 2 * barWidth, value + 10, f'{value:.2f}', ha='center', va='bottom')
+for i, value in enumerate(guess_freq):
+    plt.text(i + 3 * barWidth, value + 10, f'{value:.2f}', ha='center', va='bottom')
 
 # Adding labels
 plt.xlabel('PLM', fontweight='bold', fontsize=15)
