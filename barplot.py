@@ -12,12 +12,12 @@ guess_nohapax = [804.13, 866.59, 764.74, 997.34]
 guess_seen = [751.37, 846.96, 730.56, 958.8]
 guess_freq = [188.5, 356.68, 159.5, 545.27]
 
-
 # Set position of bar on X axis
 br1 = np.arange(len(guess_tot))
 br2 = [x + barWidth for x in br1]
 br3 = [x + barWidth for x in br2]
 br4 = [x + barWidth for x in br3]
+br5 = [x + barWidth for x in br4]
 
 # Make the plot
 plt.bar(br1, guess_tot, color='darkred', width=barWidth,
@@ -28,6 +28,7 @@ plt.bar(br3, guess_seen, color='steelblue', width=barWidth,
         edgecolor='steelblue', label='guess_seen')
 plt.bar(br4, guess_freq, color='lightpink', width=barWidth,
         edgecolor='lightpink', label='guess_frequent')
+
 
 for i, value in enumerate(guess_tot):
     plt.text(i, value + 10, f'{value:.2f}', ha='center', va='bottom')

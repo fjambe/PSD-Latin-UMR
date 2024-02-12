@@ -110,6 +110,7 @@ def embeddings_in_df(embedder, tokens_or_document, sentence_processing=False):
         sentenced_tokens = defaultdict(dict)
         for t, v in tokens_or_document.items():  # tokens_dict
             sent_id = t.strip('w#w-').split('W')[0]
+            # print(sent_id)
             if sent_id not in sents:
                 sents[sent_id] = [v['form'] for t, v in tokens_or_document.items() if
                                   t.strip('w#w-').split('W')[0] == sent_id]
@@ -121,13 +122,11 @@ def embeddings_in_df(embedder, tokens_or_document, sentence_processing=False):
             embedder.embed(sentence)
 
             for tk in sentence:
-                info[tk.text] = {'token': tk.text, 'embedding': tk.embedding}
                 for item, v in sentenced_tokens[sent_id].items():
                     if v['form'] == tk.text:
-                        info[tk.text].update({'token_id': item})
-                        info[tk.text].update({'lemma': v['lemma']})
                         if v.get('id_tect'):
-                            info[tk.text]['id_tect'] = v['id_tect']
+                            t_id = v['id_tect']
+                            info[t_id] = {'id_tect': t_id, 'token': tk.text, 'embedding': tk.embedding, 'token_id': item, 'lemma': v['lemma']}
 
     else:
         progr_sent_number = 0
@@ -180,9 +179,13 @@ def get_wrong_guesses(candidates, lemma):
     return wrong
 
 
-def process_candidates(candidates):
-    return [(el, defs.get(ref_annotation.get(el))) for el in candidates if
-            ref_annotation.get(el) and defs.get(ref_annotation.get(el))]
+def process_candidates(candidates, extract_synset_id=False):
+    if extract_synset_id:
+        return [(el, ref_annotation.get(el), defs.get(ref_annotation.get(el))) for el in candidates if
+                ref_annotation.get(el) and defs.get(ref_annotation.get(el))]
+    else:
+        return [(el, defs.get(ref_annotation.get(el))) for el in candidates if
+                ref_annotation.get(el) and defs.get(ref_annotation.get(el))]
 
 
 if __name__ == "__main__":
@@ -203,8 +206,10 @@ if __name__ == "__main__":
     # polish files: cat xxx.tsv | cut -f ... (keep lemma, pdt_frame, synset, def) | tail -n +4 | grep -Pv '^\t'
     # possibly to integrate in the python code, once the file format will be standardized.
     wordnet = read_wordnet('/home/federica/vallex-pokus/files/LiLa_LatinWordnet.csv')
-    defs, ref_annotation = retrieve_definitions('/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH/polished_total_frames_no31-40.tsv', wordnet)
-    defs_temp, tgt_annotation = retrieve_definitions('/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH/polished_frames_only31-40.tsv', wordnet)
+    defs, ref_annotation = retrieve_definitions(
+        '/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH/polished_total_frames_no31-40.tsv', wordnet)
+    defs_temp, tgt_annotation = retrieve_definitions(
+        '/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH/polished_frames_only31-40.tsv', wordnet)
     defs.update(defs_temp)
     definitions = list(set(defs.values()))
 
@@ -228,6 +233,7 @@ if __name__ == "__main__":
     # FLAIR embeddings exploiting Transformers architecture for tokens
     embedding = TransformerWordEmbeddings(bert, repo_type='model', subtoken_pooling='mean', seed=42)
     word_embeddings = embeddings_in_df(embedding, tgt_tokens)
+    print(word_embeddings.head())
 
     # Subtoken_pooling (Flair library) is used to convert subword embeddings to word embeddings.
     # 3 more options are available for this transformation, besides `mean`: `first`, `last`, `first_last`
@@ -239,6 +245,8 @@ if __name__ == "__main__":
     tgt_verbal = [v for v in tgt_verbal if v in tgt_annotation]  # keep only annotated predicates
 
     verbal_embeddings = word_embeddings[word_embeddings['id_tect'].isin(tgt_verbal)]
+    print(verbal_embeddings.head())
+    quit()
 
     # retrieving reference tokens from files --> reference corpus
     ref_tokens = get_token_from_mlayer('sallust-libri1-10.afun.normalized.m')
@@ -281,7 +289,6 @@ if __name__ == "__main__":
     statistical methods for the vector similarity can be used. Such techniques are cosine similarity, Euclidean
     distance, Jaccard distance, word mover’s distance. Cosine similarity is the technique that is being widely used for
     text similarity + explanations on other measures."
-    TODO: check.
     """
 
     # retrieve candidates that are selected as appropriate before the first one with constrained lemma
@@ -294,9 +301,12 @@ if __name__ == "__main__":
     verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(
         lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
     verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates)
+    verbal_embeddings['not_constrained_candidates'] = verbal_embeddings['all_candidates'].apply(process_candidates,
+                                                                                                extract_synset_id=True)
     verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.tsv', sep='\t',
-                             columns=['token', 'token_id', 'lemma', 'id_tect', 'possible_synsets', 'wrong_number',
-                                      'wrong_guesses'], encoding='utf-8', index=False)
+                             columns=['token', 'token_id', 'lemma', 'id_tect', 'not_constrained_candidates',
+                                      'possible_synsets', 'wrong_number', 'wrong_guesses'],
+                             encoding='utf-8', index=False)
 
     # TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
 
