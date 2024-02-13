@@ -9,27 +9,24 @@ from flair.data import Sentence
 from sklearn.metrics.pairwise import cosine_similarity
 
 pd.set_option('display.max_columns', None)
-
 parser = argparse.ArgumentParser()
 parser.add_argument("bert_model", type=str, help="BERT model to be used."
-                                                 "Suggested options: mbert, latin, laberta, philberta."
+                                                 "Suggested options: mbert, latin-bert, philberta, philta."
                                                  "To use a different model, specify HF name as 'namespace/model'."
                                                  "An exception is raised if the passed model is not retrievable.")
 
 
 def read_wordnet(wn_path):
     """Function to load Latin WordNet."""
-    with open(wn_path, 'r', encoding='utf8') as wordn:
-        lwn = pd.read_csv(wordn, header=0, usecols=lambda x: x not in ['id', 'type'])
-        lwn['Transf_synset'] = lwn['id_synset'].str.removeprefix('http://wordnet-rdf.princeton.edu/wn30/').str.split(
-            '-')
-        lwn['Transf_synset'] = lwn['Transf_synset'].str[1] + '#' + lwn['Transf_synset'].str[0]
+    lwn = pd.read_csv(wn_path, header=0, usecols=lambda x: x not in ['id', 'type'])
+    lwn['Transf_synset'] = lwn['id_synset'].str.removeprefix('http://wordnet-rdf.princeton.edu/wn30/').str.split('-')
+    lwn['Transf_synset'] = lwn['Transf_synset'].str[1] + '#' + lwn['Transf_synset'].str[0]
     return lwn
 
 
 def retrieve_definitions(filename, wn):
     """Function to load all definitions that have been assigned to annotated predicates."""
-    defs = {}
+    defins = {}
     annotated = {}
     placeholder = 1
     with open(filename, 'r', encoding='utf8') as infile:
@@ -41,19 +38,19 @@ def retrieve_definitions(filename, wn):
                     definition = set(wn.loc[(wn['Transf_synset'] == s), 'definition'].values)
                     annotated[line[0]] = line[4]
                     if s.startswith('v#'):  # only verbal frames
-                        defs[s] = definition.pop()
+                        defins[s] = definition.pop()
 
             elif len(line) == 6:  # cases where a new definitions was assigned
                 if line[4] not in ['', 'TBD', '-']:  # synset available
                     synset = line[4].strip(' ')  # strip to deal with extra spaces
                     if synset.startswith('v#'):
-                        defs[synset] = set(wn.loc[(wn['Transf_synset'] == synset), 'definition'].values).pop()
+                        defins[synset] = set(wn.loc[(wn['Transf_synset'] == synset), 'definition'].values).pop()
                         annotated[line[0]] = line[4]
                 else:
-                    defs['v#' + str(placeholder)] = line[5]
+                    defins['v#' + str(placeholder)] = line[5]
                     annotated[line[0]] = 'v#' + str(placeholder)
                     placeholder += 1
-    return defs, annotated
+    return defins, annotated
 
 
 def get_token_from_mlayer(m_filename, prefix='.//{http://ufal.mff.cuni.cz/pdt/pml/}'):
@@ -110,7 +107,6 @@ def embeddings_in_df(embedder, tokens_or_document, sentence_processing=False):
         sentenced_tokens = defaultdict(dict)
         for t, v in tokens_or_document.items():  # tokens_dict
             sent_id = t.strip('w#w-').split('W')[0]
-            # print(sent_id)
             if sent_id not in sents:
                 sents[sent_id] = [v['form'] for t, v in tokens_or_document.items() if
                                   t.strip('w#w-').split('W')[0] == sent_id]
@@ -126,7 +122,8 @@ def embeddings_in_df(embedder, tokens_or_document, sentence_processing=False):
                     if v['form'] == tk.text:
                         if v.get('id_tect'):
                             t_id = v['id_tect']
-                            info[t_id] = {'id_tect': t_id, 'token': tk.text, 'embedding': tk.embedding, 'token_id': item, 'lemma': v['lemma']}
+                            info[t_id] = {'id_tect': t_id, 'token': tk.text, 'embedding': tk.embedding,
+                                          'token_id': item, 'lemma': v['lemma']}
 
     else:
         progr_sent_number = 0
@@ -166,10 +163,8 @@ def apply_similarity_and_sort(row):
 
 
 def get_wrong_guesses(candidates, lemma):
-    """
-    Function to retrieve all candidate tokens that have a similarity score higher than
-    the first token with constrained lemma.
-    """
+    """ Function to retrieve all candidate tokens that have a similarity score higher than
+    the first token with constrained lemma. """
     wrong = []
     for candidate_data in candidates.values():
         if candidate_data[1] == lemma:
@@ -179,13 +174,15 @@ def get_wrong_guesses(candidates, lemma):
     return wrong
 
 
-def process_candidates(candidates, extract_synset_id=False):
+def process_candidates(candidates, defins, extract_synset_id=False):
+    """Function to extract relevant information (tect_id, synset definition + possibly synset_id)
+    from candidates before storing them in the output file."""
     if extract_synset_id:
-        return [(el, ref_annotation.get(el), defs.get(ref_annotation.get(el))) for el in candidates if
-                ref_annotation.get(el) and defs.get(ref_annotation.get(el))]
+        return [(el, ref_annotation.get(el), defins.get(ref_annotation.get(el))) for el in candidates if
+                ref_annotation.get(el) and defins.get(ref_annotation.get(el))]
     else:
-        return [(el, defs.get(ref_annotation.get(el))) for el in candidates if
-                ref_annotation.get(el) and defs.get(ref_annotation.get(el))]
+        return [(el, defins.get(ref_annotation.get(el))) for el in candidates if
+                ref_annotation.get(el) and defins.get(ref_annotation.get(el))]
 
 
 if __name__ == "__main__":
@@ -213,27 +210,23 @@ if __name__ == "__main__":
     defs.update(defs_temp)
     definitions = list(set(defs.values()))
 
-    """
     # SENTENCE EMBEDDINGS for synset definitions
-    Computation of sentence embeddings for definitions that I manually assigned to verbal forms in Sallust.
-    TODO: restructure `definitions` by adding all synset-definition pairs + definitions added by me,
-    instead of storing only definitions already observed in the text and manually annotated.
-    AS OF NOW: implemented but not actually exploited.
-    """
+    # Computation of sentence embeddings for definitions that I manually assigned to verbal forms in Sallust.
+    # TODO: restructure `definitions` by adding all synset-definition pairs + definitions added by me,
+    # instead of storing only definitions already observed in the text and manually annotated.
+    # AS OF NOW: implemented but not actually exploited.
 
     # FLAIR embeddings exploiting Transformers architecture for sentences
     # sent_embedding = TransformerDocumentEmbeddings(bert, seed=42)
     # sent_embeddings = embeddings_in_df(sent_embedding, definitions, sentence_processing=True)
 
-    # retrieving tokens from file
+    # retrieving target tokens from file, then extracting predicates only
     tgt_tokens = get_token_from_mlayer('sallust-libri31-40.afun.normalized.m')
-    # extracting predicates (target tokens)
     tgt_verbs, tgt_tokens = get_frames_from_tlayer('sallust-libri31-40.afun.normalized.t', tgt_tokens)
 
     # FLAIR embeddings exploiting Transformers architecture for tokens
     embedding = TransformerWordEmbeddings(bert, repo_type='model', subtoken_pooling='mean', seed=42)
     word_embeddings = embeddings_in_df(embedding, tgt_tokens)
-    print(word_embeddings.head())
 
     # Subtoken_pooling (Flair library) is used to convert subword embeddings to word embeddings.
     # 3 more options are available for this transformation, besides `mean`: `first`, `last`, `first_last`
@@ -245,8 +238,6 @@ if __name__ == "__main__":
     tgt_verbal = [v for v in tgt_verbal if v in tgt_annotation]  # keep only annotated predicates
 
     verbal_embeddings = word_embeddings[word_embeddings['id_tect'].isin(tgt_verbal)]
-    print(verbal_embeddings.head())
-    quit()
 
     # retrieving reference tokens from files --> reference corpus
     ref_tokens = get_token_from_mlayer('sallust-libri1-10.afun.normalized.m')
@@ -274,13 +265,12 @@ if __name__ == "__main__":
     ref_verbal = [v for v in ref_verbal if v in ref_annotation]  # keep only annotated predicates
     ref_verbal_embeddings = ref_word_embeddings[ref_word_embeddings['id_tect'].isin(ref_verbal)]
 
-    # statistics (total number of predicates), to be run just once
+    # stats: total number of predicates [to be run just once]
     print('Reference corpus:', len(ref_verbal))
     print('Target corpus:', len(tgt_verbal))
 
-    # computing token similarity
+    # computing token similarity and concatenate the result with the original DataFrame
     result = verbal_embeddings.apply(apply_similarity_and_sort, axis=1)
-    # concatenate the result with the original DataFrame
     verbal_embeddings = pd.concat([verbal_embeddings, result], axis=1)
 
     """
@@ -300,20 +290,18 @@ if __name__ == "__main__":
     # extract only the 5 closest neighbours based on the similarity score (with token constrained on the lemma only)
     verbal_embeddings['constrained_candidates'] = verbal_embeddings['constrained_candidates'].apply(
         lambda constrained_candidates: dict(list(constrained_candidates.items())[:5]))
-    verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates)
+    verbal_embeddings['possible_synsets'] = verbal_embeddings['constrained_candidates'].apply(process_candidates,
+                                                                                              args=(defs,))
     verbal_embeddings['not_constrained_candidates'] = verbal_embeddings['all_candidates'].apply(process_candidates,
-                                                                                                extract_synset_id=True)
+                                                                                                args=(defs, True))
     verbal_embeddings.to_csv(f'{args.bert_model}_constrained_candidate_senses.tsv', sep='\t',
                              columns=['token', 'token_id', 'lemma', 'id_tect', 'not_constrained_candidates',
                                       'possible_synsets', 'wrong_number', 'wrong_guesses'],
                              encoding='utf-8', index=False)
 
     # TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
-
     # list of possible definition for my token: given a lemma, I have column definition in dataframe wordnet
     # for each of these definition I can already retrieve its embeddings in sent_embeddings df,
     # where I have sent_text - wn_synset_id - sent_emb
     # each of the candidates: each el in possible_synsets
     # for each definition (d) of my token, compute sentence similarity with each of the candidates (c)
-    # how to compute sentence similarity? do I need sentences or embeddings?
-    # possibly reduce the number of candidates to 3.

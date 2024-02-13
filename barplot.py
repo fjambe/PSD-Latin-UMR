@@ -7,10 +7,14 @@ barWidth = 0.2
 fig = plt.subplots(figsize=(14, 9))
 
 # set height of bar
-guess_tot = [906.81, 955.6, 876.05, 1057.71]
-guess_nohapax = [804.13, 866.59, 764.74, 997.34]
-guess_seen = [751.37, 846.96, 730.56, 958.8]
-guess_freq = [188.5, 356.68, 159.5, 545.27]
+# guess_tot = [906.81, 955.6, 876.05, 1057.71]
+guess_tot = [1158.59, 1228.24, 1127.13, 1352.18]
+# guess_nohapax = [804.13, 866.59, 764.74, 997.34]
+guess_nohapax = [1021.79, 1111.02, 981.48, 1269.83]
+# guess_seen = [751.37, 846.96, 730.56, 958.8]
+guess_seen = [963.58, 1084.63, 929.84, 1214.21]
+# guess_freq = [188.5, 356.68, 159.5, 545.27]
+guess_freq = [362.67, 491.19, 248, 679.67]
 
 # Set position of bar on X axis
 br1 = np.arange(len(guess_tot))
