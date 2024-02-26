@@ -21,7 +21,6 @@ br1 = np.arange(len(guess_tot))
 br2 = [x + barWidth for x in br1]
 br3 = [x + barWidth for x in br2]
 br4 = [x + barWidth for x in br3]
-br5 = [x + barWidth for x in br4]
 
 # Make the plot
 plt.bar(br1, guess_tot, color='darkred', width=barWidth,
@@ -44,10 +43,11 @@ for i, value in enumerate(guess_freq):
     plt.text(i + 3 * barWidth, value + 10, f'{value:.2f}', ha='center', va='bottom')
 
 # Adding labels
-plt.xlabel('PLM', fontweight='bold', fontsize=15)
-plt.ylabel('Candidates', fontweight='bold', fontsize=15)
+plt.xlabel('PLM', fontweight='bold', fontsize=18)
+plt.ylabel('Candidates', fontweight='bold', fontsize=18)
 plt.xticks([r + barWidth for r in range(len(guess_tot))],
-           ['mBERT', 'LatinBERT', 'PhilBERTa', 'PhilTa'])
+           ['mBERT', 'LatinBERT', 'PhilBERTa', 'PhilTa'], fontsize=15)
+plt.yticks(fontsize=15)
 
-plt.legend()
+plt.legend(fontsize=10.5)
 plt.show()

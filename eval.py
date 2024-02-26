@@ -124,7 +124,7 @@ if __name__ == "__main__":
     oov_rate = round(oov / all_entries * 100, 2)  # 20%
 
     synset_comparison = compare_synsets(info, tgt_verbs, ref_verbs)
-    # print(synset_comparison)
+    print(synset_comparison)
     avg_synsets = round(mean(synset_comparison.values()), 2)
 
     print('10 most frequent verbs:', most_freq,
