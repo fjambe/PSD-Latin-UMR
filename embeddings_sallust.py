@@ -228,11 +228,7 @@ if __name__ == "__main__":
     embedding = TransformerWordEmbeddings(bert, repo_type='model', subtoken_pooling='mean', seed=42)
     word_embeddings = embeddings_in_df(embedding, tgt_tokens)
 
-    # Subtoken_pooling (Flair library) is used to convert subword embeddings to word embeddings.
-    # 3 more options are available for this transformation, besides `mean`: `first`, `last`, `first_last`
-    # (see https://flairnlp.github.io/docs/tutorial-embeddings/transformer-embeddings#Pooling-operation).
-
-    # Filtering the dataframe and keeping only verbal tokens, which are assigned a frame
+    # filtering the dataframe and keeping only verbal tokens, which are assigned a frame
     # (and are found in the dictionary `verbs`)
     tgt_verbal = [k for k in tgt_verbs]
     tgt_verbal = [v for v in tgt_verbal if v in tgt_annotation]  # keep only annotated predicates
@@ -273,14 +269,6 @@ if __name__ == "__main__":
     result = verbal_embeddings.apply(apply_similarity_and_sort, axis=1)
     verbal_embeddings = pd.concat([verbal_embeddings, result], axis=1)
 
-    """
-    From https://intellica-ai.medium.com/comparison-of-different-word-embeddings-on-text-similarity-a-use-case-in-nlp-e83e08469c1c:
-    "Once we will have vectors of the given text chunk, to compute the similarity between generated vectors,
-    statistical methods for the vector similarity can be used. Such techniques are cosine similarity, Euclidean
-    distance, Jaccard distance, word mover’s distance. Cosine similarity is the technique that is being widely used for
-    text similarity + explanations on other measures."
-    """
-
     # retrieve candidates that are selected as appropriate before the first one with constrained lemma
     verbal_embeddings['wrong_guesses'] = verbal_embeddings.apply(
         lambda row: get_wrong_guesses(row['all_candidates'], row['lemma']), axis=1)
@@ -298,10 +286,3 @@ if __name__ == "__main__":
                              columns=['token', 'token_id', 'lemma', 'id_tect', 'not_constrained_candidates',
                                       'possible_synsets', 'wrong_number', 'wrong_guesses'],
                              encoding='utf-8', index=False)
-
-    # TODO: among the possible definitions for my token's lemma, find the closest to each of the candidates.
-    # list of possible definition for my token: given a lemma, I have column definition in dataframe wordnet
-    # for each of these definition I can already retrieve its embeddings in sent_embeddings df,
-    # where I have sent_text - wn_synset_id - sent_emb
-    # each of the candidates: each el in possible_synsets
-    # for each definition (d) of my token, compute sentence similarity with each of the candidates (c)
