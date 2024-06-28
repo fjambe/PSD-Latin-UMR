@@ -10,10 +10,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 pd.set_option('display.max_columns', None)
 parser = argparse.ArgumentParser()
-parser.add_argument("bert_model", type=str, help="BERT model to be used."
-                                                 "Suggested options: mbert, latin-bert, philberta, philta."
-                                                 "To use a different model, specify HF name as 'namespace/model'."
-                                                 "An exception is raised if the passed model is not retrievable.")
+parser.add_argument("bert_model", type=str, required=True, help="BERT model to be used."
+                                                                "Suggested options: mbert, latin-bert, philberta, philta."
+                                                                "To use a different model, specify HF name as 'namespace/model'."
+                                                                "An exception is raised if the passed model is not retrievable.")
+parser.add_argument("wordnet_path", type=str, required=True, help="Path to the WordNet csv file.")
+parser.add_argument("sallust_path", type=str, required=True, help="Path to the LDT-Sallust file."
+                                                                  "It should resemble the following:"
+                                                                  "/LDT_PML_tectogrammatical_130317/LDT_Sallust/Sallust_all_files")
+parser.add_argument("latin_bert_path", type=str, help="Path to the Latin BERT.")
 
 
 def read_wordnet(wn_path):
@@ -55,7 +60,7 @@ def retrieve_definitions(filename, wn):
 
 def get_token_from_mlayer(m_filename, prefix='.//{http://ufal.mff.cuni.cz/pdt/pml/}'):
     """Function to retrieve all tokens from PDT morphological layer."""
-    filename = f'/home/federica/vallex-pokus/LDT_PML_tectogrammatical_130317/LDT_Sallust/Sallust_all_files/{m_filename}'
+    filename = f'{args.sallust_path}/{m_filename}'
     m_tree = etree.parse(filename)
     m_elem = m_tree.getroot()
     xml_m_tokens = m_elem.findall(f'{prefix}m')
@@ -72,7 +77,7 @@ def get_token_from_mlayer(m_filename, prefix='.//{http://ufal.mff.cuni.cz/pdt/pm
 
 def get_frames_from_tlayer(t_filename, pdt_tokens, prefix='.//{http://ufal.mff.cuni.cz/pdt/pml/}'):
     """Function to retrieve all nodes with a valency frame in PDT tectogrammatical layer."""
-    filename = f'/home/federica/vallex-pokus/LDT_PML_tectogrammatical_130317/LDT_Sallust/Sallust_all_files/{t_filename}'
+    filename = f'{args.sallust_path}/{t_filename}'
     t_tree = etree.parse(filename)
     t_elem = t_tree.getroot()
 
@@ -191,7 +196,10 @@ if __name__ == "__main__":
     if args.bert_model == 'mbert':
         bert = 'bert-base-multilingual-cased'
     elif args.bert_model == 'latin-bert':
-        bert = '/home/federica/hf-latin-bert/bert-base-latin-uncased/'
+        if latin_bert_path is None:
+            parser.error('Latin BERT path was not specified')
+        else:
+            bert = args.latin_bert_path
     elif args.bert_model == 'philta':
         bert = 'bowphs/PhilTa'  # T5 model trained on Latin,Greek and English
     elif args.bert_model == 'philberta':
@@ -202,11 +210,11 @@ if __name__ == "__main__":
     # Load files
     # polish files: cat xxx.tsv | cut -f ... (keep lemma, pdt_frame, synset, def) | tail -n +4 | grep -Pv '^\t'
     # possibly to integrate in the python code, once the file format will be standardized.
-    wordnet = read_wordnet('/home/federica/vallex-pokus/files/LiLa_LatinWordnet.csv')
+    wordnet = read_wordnet(args.wordnet_path)
     defs, ref_annotation = retrieve_definitions(
-        '/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH/polished_total_frames_no31-40.tsv', wordnet)
+        'polished_total_frames_no31-40.tsv', wordnet)
     defs_temp, tgt_annotation = retrieve_definitions(
-        '/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH/polished_frames_only31-40.tsv', wordnet)
+        'polished_frames_only31-40.tsv', wordnet)
     defs.update(defs_temp)
     definitions = list(set(defs.values()))
 

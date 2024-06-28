@@ -104,10 +104,8 @@ if __name__ == "__main__":
 
     # Load and extract information
     info = read_filename(args.file)
-    ref_verbs = retrieve_annotated_verbs('/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH'
-                                         '/polished_total_frames_no31-40.tsv')
-    tgt_verbs = retrieve_annotated_verbs('/home/federica/vallex-pokus/predicting_frames/sallust-bert-GH'
-                                         '/polished_frames_only31-40.tsv')
+    ref_verbs = retrieve_annotated_verbs('polished_total_frames_no31-40.tsv')
+    tgt_verbs = retrieve_annotated_verbs('polished_frames_only31-40.tsv')
     frequency = count_verbs(ref_verbs, tgt_verbs)  # e.g. [('facio', 81), ('dico', 39), ...]
     most_freq = [pair[0] for pair in frequency.most_common(10)]  # i.e., lemmas
     only_once = count_only_once_verbs(ref_verbs, tgt_verbs)  # 37, 13.7%
