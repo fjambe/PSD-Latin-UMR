@@ -1,0 +1,6 @@
+Required files:
+
+- Latin WordNet: https://raw.githubusercontent.com/CIRCSE/latinWordnet-revision/master/LiLa_LatinWordnet.csv
+- Tectogrammatical layer of _De Coniuratione Catilinae': https://itreebank.marginalia.it/doc/LDT_PML_tectogrammatical_130317.zip
+
+- (Latin BERT)
