@@ -1,2 +1,4 @@
-# sallust-bert
-Project about exploiting BERT to automatically retrieve definition/synset candidates for UMR annotation.
+# Predicate Sense Disambiguation for Latin UMR
+Repository containing the code for the paper:
+
+"Predicate Sense Disambiguation for UMR Annotation of Latin: Challenges and Insights" (Gamba, 2024).
